@@ -1,0 +1,196 @@
+<!doctype html>
+<html>
+<head>
+<title>Coordinate systems</title>
+<script src="microevent.js"></script>
+<script src="coords.js"></script>
+<style>
+* { box-sizing: border-box; }
+.coord-maker { font-family: monospace; }
+.coord-maker input.coord-part { width: 4em; border: 1px solid #666; border-radius: 3px; text-align: right; padding: 0px 3px; }
+.coord-maker .coord-colour { display: inline-block; width: 1em; height: 1em; border: 1px solid black; }
+</style>
+</head>
+<body>
+<canvas width="800" height="800" id="coord-canvas"></canvas>
+<fieldset>
+	<div class="coord-maker" data-coord-maker="S">
+		<span class="coord-colour"></span>
+		s = S(<input type="number" class="coord-part" value="10" step="1">,
+			<input type="number" class="coord-part" value="10" step="1">)
+	</div>
+	<div class="coord-maker" data-coord-maker="T">
+		<span class="coord-colour"></span>
+		t = T(<input type="number" class="coord-part" value="0" step="0.1">,
+			<input type="number" class="coord-part" value="50" step="1">)
+	</div>
+	<div class="coord-maker" data-coord-maker="Y">
+		<span class="coord-colour"></span>
+		y = Y(<input type="number" class="coord-part" value="0" step="0.01">,
+			<input type="number" class="coord-part" value="0" step="0.01">)
+	</div>
+	<div class="coord-maker" data-coord-maker="G">
+		<span class="coord-colour"></span>
+		g = G(<input type="number" class="coord-part" value="0" step="1">,
+			<input type="number" class="coord-part" value="50" step="1">,
+			<input type="number" class="coord-part" value="0.5" step="0.1">)
+	</div>
+</fieldset>
+
+<p>See the source code on <a href="http://github.com/timheap/coord-vis">Github</a>.</p>
+
+<script>
+(function() {
+	"use strict";
+	var canvas = document.getElementById('coord-canvas');
+	var context = canvas.getContext('2d');
+	var width = canvas.width;
+	var height = canvas.height;
+
+	var coordinateSystems = [
+		COORDS.makeCoordinateSystem({
+			name: 'S',
+			colour: '#ff0000',
+			mapping: function(x, y) {
+				return [x, y];
+			},
+			renderAxis: function(context) {
+				context.beginPath();
+				context.moveTo(0, -height);
+				context.lineTo(0, height);
+				context.moveTo(-width, 0);
+				context.lineTo(width, 0);
+				context.stroke();
+			}
+		}),
+		COORDS.makeCoordinateSystem({
+			name: 'T',
+			colour: '#00ff00',
+			offset: [40, 30],
+			mapping: function(t, r) {
+				return [Math.cos(t) * r + this.offset[0], Math.sin(t) * r + this.offset[1]];
+			},
+			renderAxis: function(context) {
+				context.beginPath();
+				context.translate.apply(context, this.offset);
+				for (var i = 0; i < 12; i++) {
+					var angle = Math.PI * 2 * (i / 12);
+					context.moveTo(0, 0);
+					context.lineTo(Math.cos(angle) * width, Math.sin(angle) * width);
+				}
+				for (var i = 0; i < width; i += 100) {
+					context.arc(0, 0, i, 0, Math.PI * 2, false);
+				}
+				context.stroke();
+			}
+		}),
+		COORDS.makeCoordinateSystem({
+			name: 'Y',
+			colour: '#ffaa00',
+			rotation: Math.PI * 1.2,
+			offset: [3, 0.5],
+			scale: 100,
+			mapping: function(x, y) {
+				var c = Math.cos(this.rotation), s = Math.sin(this.rotation);
+				var xx = x * c - y * s;
+				var yy = x * s + y * c;
+				return [(xx + this.offset[0]) * this.scale, (yy + this.offset[1]) * this.scale];
+			},
+			renderAxis: function(context) {
+				context.beginPath();
+				context.translate(this.offset[0] * this.scale, this.offset[1] * this.scale);
+				context.rotate(this.rotation);
+				context.moveTo(0, -height * this.scale);
+				context.lineTo(0, height * this.scale);
+				context.moveTo(-width * this.scale, 0);
+				context.lineTo(width * this.scale, 0);
+				context.stroke();
+			}
+		}),
+		COORDS.makeCoordinateSystem({
+			name: 'G',
+			colour: '#0000ff',
+			offset: [-20, -80],
+			mapping: function(x, y, t) {
+				return [x + t * y + this.offset[0], y + this.offset[1]];
+			},
+			renderAxis: function(context, point) {
+				var skew = this.variablePoint.getCoordinates()[2];
+				context.beginPath();
+				context.translate.apply(context, this.offset);
+				context.moveTo(0, -height);
+				context.lineTo(0, height);
+				if (skew !== 0) {
+					context.moveTo((skew * -height), -height);
+					context.lineTo((skew * height), height);
+				}
+				context.moveTo(-width, 0);
+				context.lineTo(width, 0);
+				context.stroke();
+			}
+		})
+	];
+
+	var locationHashCoords = function() {
+		if (!location.hash) return false;
+		var coords = location.hash.substring(1).split('|').reduce(function(acc, nameCoordString) {
+			var bits = nameCoordString.split('=', 2),
+				name = bits[0],
+				coords = bits[1].split(',').map(parseFloat);
+			acc[name] = coords;
+			return acc;
+		}, {});
+		console.log(coords);
+		return coords;
+	}();
+
+	var render = function() {
+		context.clearRect(0, 0, width, height);
+		context.save();
+		context.translate(width / 2, height / 2);
+		context.lineWidth = 2;
+		context.scale(1, -1);
+
+		context.save();
+		context.globalAlpha = 0.3;
+		coordinateSystems.forEach(function (coordinateSystem) {
+			coordinateSystem.renderAxis(context);
+		});
+		context.restore();
+
+		context.save();
+		context.globalAlpha = 1;
+		coordinateSystems.forEach(function (coordinateSystem) {
+			coordinateSystem.renderPoint(context);
+		});
+		context.restore();
+
+		context.restore();
+	};
+
+	var updateLocation = function() {
+		var hashString = coordinateSystems.map(function(coordinateSystem) {
+			return coordinateSystem.name + '=' + coordinateSystem.variablePoint.getCoordinates().join(',');
+		}).join('|');
+		if (window.history.replaceState) {
+			window.history.replaceState({}, '', '#' + hashString);
+		} else {
+			window.location.hash = hashString;
+		}
+	};
+
+	coordinateSystems.forEach(function(coordinateSystem) {
+		if (locationHashCoords && coordinateSystem.name in locationHashCoords) {
+			coordinateSystem.variablePoint.setCoordinates(locationHashCoords[coordinateSystem.name])
+		}
+
+		coordinateSystem.variablePoint.addEventListener('change', render);
+		coordinateSystem.variablePoint.addEventListener('change', updateLocation);
+	});
+
+	render();
+
+})();
+</script>
+</body>
+</html>
